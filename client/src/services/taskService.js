@@ -1,6 +1,8 @@
 // Keep local development working even when the downloaded project has no
 // client/.env file. Set VITE_API_URL to the deployed API URL in other setups.
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace(/\/$/, '');
+const API_BASE_URL = (
+  import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+).replace(/\/$/, '');
 
 class TaskService {
   async getAllTasks() {
@@ -15,9 +17,9 @@ class TaskService {
 
   async createTask(taskData) {
     const response = await fetch(`${API_BASE_URL}/tasks`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify(taskData),
     });
@@ -34,7 +36,7 @@ class TaskService {
 
   async deleteTask(taskId) {
     const response = await fetch(`${API_BASE_URL}/tasks/${taskId}`, {
-      method: "DELETE",
+      method: 'DELETE',
     });
 
     if (!response.ok) {

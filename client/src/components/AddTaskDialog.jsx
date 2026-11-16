@@ -71,7 +71,12 @@ const AddTaskDialog = ({ onClose, onSubmit }) => {
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors duration-200"
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -91,7 +96,10 @@ const AddTaskDialog = ({ onClose, onSubmit }) => {
           )}
 
           <div className="mb-4">
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="title"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Task Title *
             </label>
             <input
@@ -105,11 +113,16 @@ const AddTaskDialog = ({ onClose, onSubmit }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200"
               disabled={isSubmitting}
             />
-            <p className="text-xs text-gray-500 mt-1">{formData.title.length}/100 characters</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {formData.title.length}/100 characters
+            </p>
           </div>
 
           <div className="mb-6">
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="description"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               Description *
             </label>
             <textarea
@@ -140,7 +153,11 @@ const AddTaskDialog = ({ onClose, onSubmit }) => {
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !formData.title.trim() || !formData.description.trim()}
+              disabled={
+                isSubmitting ||
+                !formData.title.trim() ||
+                !formData.description.trim()
+              }
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
             >
               {isSubmitting ? (

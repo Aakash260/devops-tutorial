@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { formatDate } from "../utils/dateUtils";
+import { useState } from 'react';
+import { formatDate } from '../utils/dateUtils';
 
 const TaskCard = ({ task, onDelete }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (window.confirm("Are you sure you want to delete this task?")) {
+    if (window.confirm('Are you sure you want to delete this task?')) {
       setIsDeleting(true);
       try {
         await onDelete(task._id);
       } catch (error) {
-        console.error("Error deleting task:", error);
+        console.error('Error deleting task:', error);
       } finally {
         setIsDeleting(false);
       }

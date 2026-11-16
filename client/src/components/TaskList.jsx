@@ -1,4 +1,4 @@
-import TaskCard from "./TaskCard";
+import TaskCard from './TaskCard';
 
 const TaskList = ({ tasks, onDeleteTask }) => {
   if (tasks.length === 0) {

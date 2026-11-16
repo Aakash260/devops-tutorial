@@ -69,8 +69,12 @@ function App() {
         <div className="max-w-4xl mx-auto px-4 py-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Task Manager Edited</h1>
-              <p className="text-gray-600 mt-1">Simple task management for DevOps demo</p>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Task Manager Edited
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Simple task management for DevOps demo
+              </p>
             </div>
             <button
               onClick={() => setIsDialogOpen(true)}
@@ -121,7 +125,10 @@ function App() {
 
       {/* Add Task Dialog */}
       {isDialogOpen && (
-        <AddTaskDialog onClose={() => setIsDialogOpen(false)} onSubmit={handleAddTask} />
+        <AddTaskDialog
+          onClose={() => setIsDialogOpen(false)}
+          onSubmit={handleAddTask}
+        />
       )}
     </div>
   );
