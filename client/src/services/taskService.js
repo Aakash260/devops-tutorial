@@ -1,7 +1,7 @@
 // Keep local development working even when the downloaded project has no
 // client/.env file. Set VITE_API_URL to the deployed API URL in other setups.
 const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  import.meta.env.VITE_API_URL || 'http://13.201.228.122:5000'
 ).replace(/\/$/, '');
 
 class TaskService {
