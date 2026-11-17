@@ -185,4 +185,6 @@ jobs:
             $DOCKER_CMD compose up -d --build
             $DOCKER_CMD image prune -f
             $DOCKER_CMD compose ps
+            echo "=== SERVER CONTAINER LOGS ==="
+            $DOCKER_CMD compose logs --tail=30 server || true
           EOF
