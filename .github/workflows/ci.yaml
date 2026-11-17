@@ -136,13 +136,21 @@ jobs:
             TARGET_DIR="${EC2_APP_DIR:-$HOME/devops-tutorial}"
             TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
 
-            if [ -d "$TARGET_DIR" ]; then
+            # If TARGET_DIR points to home directory or has no repo name, target devops-tutorial
+            if [ "$TARGET_DIR" = "$HOME" ] || [ "$TARGET_DIR" = "/home/ec2-user" ] || [ "$TARGET_DIR" = "/home/ubuntu" ] || [ "$TARGET_DIR" = "." ]; then
+              TARGET_DIR="$HOME/devops-tutorial"
+            fi
+
+            if [ -d "$TARGET_DIR/.git" ]; then
               cd "$TARGET_DIR"
-            elif [ -d ~/devops-tutorial ]; then
-              cd ~/devops-tutorial
-            elif [ -d ~/devops-youtube-course-2025 ]; then
-              cd ~/devops-youtube-course-2025
+            elif [ -d "$HOME/devops-tutorial/.git" ]; then
+              cd "$HOME/devops-tutorial"
+            elif [ -d "$HOME/devops-youtube-course-2025/.git" ]; then
+              cd "$HOME/devops-youtube-course-2025"
             else
+              echo "Cloning repository into $TARGET_DIR..."
+              mkdir -p "$(dirname "$TARGET_DIR")"
+              rm -rf "$TARGET_DIR" 2>/dev/null || true
               git clone https://github.com/Aakash260/devops-tutorial.git "$TARGET_DIR"
               cd "$TARGET_DIR"
             fi
