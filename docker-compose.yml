@@ -6,13 +6,15 @@ services:
       - ./server/.env
     ports:
       - "5000:5000"
+    restart: unless-stopped
 
   client:
     build:
       context: ./client
       args:
-        VITE_API_URL: http://13.201.228.122:5000/api
+        VITE_API_URL: ${VITE_API_URL:-http://13.201.228.122:5000/api}
     ports:
       - "5173:80"
     depends_on:
       - server
+    restart: unless-stopped

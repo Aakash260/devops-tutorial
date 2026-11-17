@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -68,3 +68,40 @@ jobs:
 
       - name: Check formatting
         run: npm run format:check
+
+  deploy:
+    name: Deploy to AWS EC2
+    needs: [client, server]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            set -e
+            # Navigate to the project directory, or clone it if it does not exist yet
+            if [ -d ~/devops-tutorial ]; then
+              cd ~/devops-tutorial
+            elif [ -d ~/devops-youtube-course-2025 ]; then
+              cd ~/devops-youtube-course-2025
+            else
+              git clone https://github.com/Aakash260/devops-tutorial.git ~/devops-tutorial
+              cd ~/devops-tutorial
+            fi
+
+            # Pull the latest code
+            git pull origin main
+
+            # Recreate server/.env if secret is configured (since .env is gitignored)
+            if [ -n "${{ secrets.MONGO_URI }}" ]; then
+              echo "PORT=5000" > server/.env
+              echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> server/.env
+            fi
+
+            # Rebuild and restart containers with Docker Compose
+            docker compose down
+            docker compose up -d --build
