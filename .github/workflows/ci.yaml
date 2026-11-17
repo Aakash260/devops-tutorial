@@ -70,43 +70,107 @@ jobs:
         run: npm run format:check
 
   deploy:
-    needs: build-and-lint
-    if: github.event_name == 'push'
+    name: Deploy to AWS EC2
+    needs: [client, server]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (optional)
+      - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Add EC2 host to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-
-      - name: Write SSH key
-        run: |
-          echo "${EC2_KEY}" > ec2_key.pem
-          chmod 600 ec2_key.pem
-        env:
-          EC2_KEY: ${{ secrets.EC2_KEY }}
-
-      - name: Deploy on EC2 (git pull + docker compose up -d --build)
+      - name: Configure SSH and Deploy to EC2
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_KEY: ${{ secrets.EC2_KEY }}
           EC2_APP_DIR: ${{ secrets.EC2_APP_DIR }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
-          ssh -i ec2_key.pem ${EC2_USER}@${EC2_HOST} << EOF
-            set -e
-            cd "${EC2_APP_DIR}"
+          mkdir -p ~/.ssh
+          echo "$EC2_KEY" > ec2_key.pem
+          chmod 600 ec2_key.pem
 
+          ssh -o StrictHostKeyChecking=no -i ec2_key.pem ${EC2_USER}@${EC2_HOST} "EC2_APP_DIR='${EC2_APP_DIR}' MONGO_URI='${MONGO_URI}' bash -s" << 'EOF'
+            set -e
+
+            # 1. Ensure Git is installed
+            if ! command -v git &> /dev/null; then
+              sudo dnf install -y git 2>/dev/null || sudo apt-get update -y && sudo apt-get install -y git
+            fi
+
+            # 2. Ensure Docker is installed and running
+            if ! command -v docker &> /dev/null; then
+              sudo dnf install -y docker 2>/dev/null || sudo apt-get update -y && sudo apt-get install -y docker.io
+              sudo systemctl enable --now docker
+              sudo usermod -aG docker $USER || true
+            fi
+
+            # 3. Ensure Docker Compose is installed
+            if ! docker compose version &> /dev/null; then
+              sudo mkdir -p /usr/local/lib/docker/cli-plugins
+              sudo curl -sSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose || true
+            fi
+
+            # 4. Ensure Docker Buildx >= 0.17 is installed (fixes "compose build requires buildx 0.17.0 or later")
+            if ! docker buildx version 2>&1 | grep -qE "v0\.(1[7-9]|[2-9][0-9])"; then
+              echo "Updating Docker Buildx..."
+              ARCH=$(uname -m)
+              [ "$ARCH" = "x86_64" ] && BUILDX_ARCH="amd64" || BUILDX_ARCH="arm64"
+              sudo mkdir -p /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
+              sudo curl -sSL "https://github.com/docker/buildx/releases/download/v0.21.1/buildx-v0.21.1.linux-${BUILDX_ARCH}" -o /usr/local/lib/docker/cli-plugins/docker-buildx
+              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+              sudo cp /usr/local/lib/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx 2>/dev/null || true
+            fi
+
+            # 5. Ensure swap space exists so build doesn't run out of memory on small instances
+            if [ $(free -m | awk '/^Swap:/ {print $2}') -eq 0 ]; then
+              sudo fallocate -l 2G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile || true
+            fi
+
+            # 6. Navigate to application directory or clone it
+            TARGET_DIR="${EC2_APP_DIR:-$HOME/devops-tutorial}"
+            TARGET_DIR="${TARGET_DIR/#\~/$HOME}"
+
+            if [ -d "$TARGET_DIR" ]; then
+              cd "$TARGET_DIR"
+            elif [ -d ~/devops-tutorial ]; then
+              cd ~/devops-tutorial
+            elif [ -d ~/devops-youtube-course-2025 ]; then
+              cd ~/devops-youtube-course-2025
+            else
+              git clone https://github.com/Aakash260/devops-tutorial.git "$TARGET_DIR"
+              cd "$TARGET_DIR"
+            fi
+
+            # 7. Pull latest code
             git fetch --all
             git reset --hard origin/main
 
-            docker compose up -d --build
+            # 8. Ensure server/.env exists so compose doesn't fail
+            mkdir -p server
+            if [ ! -f server/.env ]; then
+              touch server/.env
+              echo "PORT=5000" > server/.env
+            fi
+            if [ -n "$MONGO_URI" ]; then
+              echo "PORT=5000" > server/.env
+              echo "MONGO_URI=$MONGO_URI" >> server/.env
+            fi
 
-            docker image prune -f
+            # Determine docker command
+            DOCKER_CMD="docker"
+            if ! docker info >/dev/null 2>&1; then
+              DOCKER_CMD="sudo docker"
+            fi
 
-            docker compose ps
+            # 9. Build and start containers
+            $DOCKER_CMD compose down || true
+            $DOCKER_CMD compose up -d --build
+            $DOCKER_CMD image prune -f
+            $DOCKER_CMD compose ps
           EOF
