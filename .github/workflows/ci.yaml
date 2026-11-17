@@ -70,120 +70,43 @@ jobs:
         run: npm run format:check
 
   deploy:
-    name: Deploy to AWS EC2
-    needs: [client, server]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: build-and-lint
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2 via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_KEY }}
-          script: |
+      - name: Checkout (optional)
+        uses: actions/checkout@v4
+
+      - name: Add EC2 host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+
+      - name: Write SSH key
+        run: |
+          echo "${EC2_KEY}" > ec2_key.pem
+          chmod 600 ec2_key.pem
+        env:
+          EC2_KEY: ${{ secrets.EC2_KEY }}
+
+      - name: Deploy on EC2 (git pull + docker compose up -d --build)
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          EC2_APP_DIR: ${{ secrets.EC2_APP_DIR }}
+        run: |
+          ssh -i ec2_key.pem ${EC2_USER}@${EC2_HOST} << EOF
             set -e
+            cd "${EC2_APP_DIR}"
 
-            # 1. Ensure Git is installed
-            if ! command -v git &> /dev/null; then
-              echo "Git not found. Installing..."
-              if command -v apt-get &> /dev/null; then
-                sudo apt-get update -y && sudo apt-get install -y git
-              elif command -v dnf &> /dev/null; then
-                sudo dnf install -y git
-              elif command -v yum &> /dev/null; then
-                sudo yum install -y git
-              fi
-            fi
+            git fetch --all
+            git reset --hard origin/main
 
-            # 2. Ensure Docker & Docker Compose are installed
-            if ! command -v docker &> /dev/null; then
-              echo "Docker not found. Installing..."
-              if command -v dnf &> /dev/null; then
-                sudo dnf install -y docker
-              elif command -v yum &> /dev/null; then
-                sudo yum install -y docker
-              elif command -v apt-get &> /dev/null; then
-                sudo apt-get update -y && sudo apt-get install -y docker.io docker-compose-v2
-              fi
-            fi
+            docker compose up -d --build
 
-            sudo systemctl enable --now docker
-            sudo usermod -aG docker $USER || true
+            docker image prune -f
 
-            # Ensure Docker Compose plugin/binary is installed (Amazon Linux doesn't include it in docker pkg)
-            if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
-              echo "Installing Docker Compose..."
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins
-              sudo curl -sSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-              sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-            fi
-
-            # Ensure Docker Buildx >= 0.17.0 is installed (Amazon Linux comes with old 0.12.x)
-            if ! docker buildx version 2>&1 | grep -qE "v0\.(1[7-9]|[2-9][0-9])"; then
-              echo "Updating Docker Buildx..."
-              ARCH=$(uname -m)
-              case "$ARCH" in
-                x86_64) BUILDX_ARCH="amd64" ;;
-                aarch64|arm64) BUILDX_ARCH="arm64" ;;
-                *) BUILDX_ARCH="amd64" ;;
-              esac
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins /usr/libexec/docker/cli-plugins
-              sudo curl -sSL "https://github.com/docker/buildx/releases/download/v0.21.1/buildx-v0.21.1.linux-${BUILDX_ARCH}" -o /usr/local/lib/docker/cli-plugins/docker-buildx
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
-              sudo cp /usr/local/lib/docker/cli-plugins/docker-buildx /usr/libexec/docker/cli-plugins/docker-buildx 2>/dev/null || true
-            fi
-
-            # Determine compose command with sudo fallback
-            COMPOSE_CMD="docker compose"
-            if command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-              COMPOSE_CMD="docker-compose"
-            fi
-            if ! docker info >/dev/null 2>&1; then
-              COMPOSE_CMD="sudo $COMPOSE_CMD"
-            fi
-
-            # Ensure swap space exists so build doesn't run out of memory on small instances
-            if [ $(free -m | awk '/^Swap:/ {print $2}') -eq 0 ]; then
-              echo "Setting up 2GB swap space..."
-              sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
-              sudo chmod 600 /swapfile
-              sudo mkswap /swapfile
-              sudo swapon /swapfile || true
-            fi
-
-            # 3. Navigate to the project directory
-            APP_DIR="${{ secrets.EC2_APP_DIR }}"
-            if [ -z "$APP_DIR" ]; then
-              APP_DIR="$HOME/devops-tutorial"
-            fi
-
-            if [ -d "$APP_DIR" ]; then
-              cd "$APP_DIR"
-            elif [ -d ~/devops-tutorial ]; then
-              cd ~/devops-tutorial
-            elif [ -d ~/devops-youtube-course-2025 ]; then
-              cd ~/devops-youtube-course-2025
-            else
-              git clone https://github.com/Aakash260/devops-tutorial.git "$APP_DIR"
-              cd "$APP_DIR"
-            fi
-
-            # 4. Pull the latest code
-            git pull origin main
-
-            # 5. Ensure server/.env exists so compose doesn't fail
-            mkdir -p server
-            if [ ! -f server/.env ]; then
-              touch server/.env
-              echo "PORT=5000" > server/.env
-            fi
-            if [ -n "${{ secrets.MONGO_URI }}" ]; then
-              echo "PORT=5000" > server/.env
-              echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> server/.env
-            fi
-
-            # 6. Rebuild and restart containers
-            $COMPOSE_CMD down || true
-            $COMPOSE_CMD up -d --build
+            docker compose ps
+          EOF
