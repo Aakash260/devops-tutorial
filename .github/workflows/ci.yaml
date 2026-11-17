@@ -99,25 +99,34 @@ jobs:
             # 2. Ensure Docker & Docker Compose are installed
             if ! command -v docker &> /dev/null; then
               echo "Docker not found. Installing..."
-              if command -v apt-get &> /dev/null; then
-                sudo apt-get update -y && sudo apt-get install -y docker.io docker-compose-v2
-                sudo systemctl enable --now docker
-                sudo usermod -aG docker $USER || true
-              elif command -v dnf &> /dev/null; then
+              if command -v dnf &> /dev/null; then
                 sudo dnf install -y docker
-                sudo systemctl enable --now docker
-                sudo usermod -aG docker $USER || true
               elif command -v yum &> /dev/null; then
                 sudo yum install -y docker
-                sudo systemctl enable --now docker
-                sudo usermod -aG docker $USER || true
+              elif command -v apt-get &> /dev/null; then
+                sudo apt-get update -y && sudo apt-get install -y docker.io docker-compose-v2
               fi
             fi
 
-            # Determine docker command (handles non-root permissions before re-login)
-            DOCKER_CMD="docker compose"
+            sudo systemctl enable --now docker
+            sudo usermod -aG docker $USER || true
+
+            # Ensure Docker Compose plugin/binary is installed (Amazon Linux doesn't include it in docker pkg)
+            if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
+              echo "Installing Docker Compose..."
+              sudo mkdir -p /usr/local/lib/docker/cli-plugins
+              sudo curl -sSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+              sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+            fi
+
+            # Determine compose command with sudo fallback
+            COMPOSE_CMD="docker compose"
+            if command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+              COMPOSE_CMD="docker-compose"
+            fi
             if ! docker info >/dev/null 2>&1; then
-              DOCKER_CMD="sudo docker compose"
+              COMPOSE_CMD="sudo $COMPOSE_CMD"
             fi
 
             # 3. Navigate to the project directory, or clone if not present
@@ -133,12 +142,17 @@ jobs:
             # 4. Pull the latest code
             git pull origin main
 
-            # 5. Recreate server/.env if secret is configured (since .env is gitignored)
+            # 5. Ensure server/.env exists so compose doesn't fail
+            mkdir -p server
+            if [ ! -f server/.env ]; then
+              touch server/.env
+              echo "PORT=5000" > server/.env
+            fi
             if [ -n "${{ secrets.MONGO_URI }}" ]; then
               echo "PORT=5000" > server/.env
               echo "MONGO_URI=${{ secrets.MONGO_URI }}" >> server/.env
             fi
 
             # 6. Rebuild and restart containers
-            $DOCKER_CMD down || true
-            $DOCKER_CMD up -d --build
+            $COMPOSE_CMD down || true
+            $COMPOSE_CMD up -d --build
