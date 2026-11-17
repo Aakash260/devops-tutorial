@@ -176,8 +176,18 @@ jobs:
               DOCKER_CMD="sudo docker"
             fi
 
-            # 9. Build and start containers
+            # 9. Free port 5000 and 5173 if occupied by old containers or host processes
             $DOCKER_CMD compose down || true
+            sudo docker ps -q --filter "publish=5000" | xargs -r sudo docker rm -f 2>/dev/null || true
+            sudo docker ps -q --filter "publish=5173" | xargs -r sudo docker rm -f 2>/dev/null || true
+
+            PID_5000=$(sudo ss -tulpn 2>/dev/null | grep ':5000 ' | awk '{print $NF}' | sed -E 's/.*pid=([0-9]+).*/\1/' | head -n 1)
+            if [ -n "$PID_5000" ]; then
+              echo "Freeing port 5000 from host process (PID: $PID_5000)..."
+              sudo kill -9 "$PID_5000" 2>/dev/null || true
+            fi
+
+            # 10. Build and start containers
             $DOCKER_CMD compose up -d --build
             $DOCKER_CMD image prune -f
             $DOCKER_CMD compose ps
